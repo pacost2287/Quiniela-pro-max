@@ -569,19 +569,51 @@
                 return;
             }
 
-            let nombreMes = prompt("Ingresá un nombre para identificar este mes (Ej: Febrero 2026):", new Date().toLocaleString('es-ES', { month: 'long', year: 'numeric' }));
+            let nombreMes = prompt("Ingresá un nombre para identificar este mes (Ej: Agosto 2026):", new Date().toLocaleString('es-ES', { month: 'long', year: 'numeric' }));
             if (!nombreMes) return;
 
+            // Calcular estadísticas completas al momento de cerrar el mes
+            let conteoGeneral = {};
+            for (let i = 0; i <= 99; i++) conteoGeneral[i.toString().padStart(2, '0')] = 0;
+            
+            historialSorteos.forEach(sorteo => {
+                sorteo.forEach(num => {
+                    let ult2 = num.slice(-2);
+                    if (conteoGeneral[ult2] !== undefined) conteoGeneral[ult2]++;
+                });
+            });
+
+            let arr = Object.entries(conteoGeneral);
+            let calientesDetalle = [...arr].sort((a,b) => b[1] - a[1]).slice(0, 10);
+            let friosDetalle = [...arr].sort((a,b) => a[1] - b[1]).slice(0, 10);
+
+            let totalCargas = movimientosFinancieros.filter(f => f.tipo === 'carga').reduce((acc, f) => acc + f.monto, 0);
+            let totalRetiros = movimientosFinancieros.filter(f => f.tipo === 'retiro').reduce((acc, f) => acc + f.monto, 0);
+
+            // Objeto completo y detallado para comparación y exportación
             let datosMes = {
                 id: Date.now(),
                 nombre: nombreMes,
-                sorteos: historialSorteos,
-                finanzas: movimientosFinancieros
+                totalSorteos: historialSorteos.length,
+                finanzas: {
+                    cargas: totalCargas,
+                    retiros: totalRetiros,
+                    saldo: totalRetiros - totalCargas,
+                    movimientos: movimientosFinancieros
+                },
+                estadisticas: {
+                    frecuenciaPorNumero: conteoGeneral,
+                    calientes: calientesDetalle.map(i => ({ numero: i[0], apariciones: i[1] })),
+                    frios: friosDetalle.map(i => ({ numero: i[0], apariciones: i[1] }))
+                },
+                borratinaEstado: borratinaEstado,
+                historialSorteos: historialSorteos
             };
 
             historialMensual.unshift(datosMes);
             localStorage.setItem('historialMensual', JSON.stringify(historialMensual));
 
+            // Limpiar datos actuales
             historialSorteos = [];
             borratinaEstado = {};
             movimientosFinancieros = [];
@@ -594,45 +626,50 @@
             actualizarVistaHistorial();
             actualizarHistorialMensual();
 
-            alert("¡Mes guardado y archivado correctamente!");
-        }
-
-        function actualizarHistorialMensual() {
-            const container = document.getElementById('historialMensualContainer');
-            container.innerHTML = '';
-
-            if (historialMensual.length === 0) {
-                container.innerHTML = '<span style="color: #94a3b8; font-size: 0.85rem;">No hay meses archivados todavía.</span>';
-                return;
-            }
-
-            historialMensual.forEach(m => {
-                container.innerHTML += `
-                    <div class="mes-item">
-                        <div>
-                            <strong>${m.nombre}</strong><br>
-                            <small style="color: #64748b;">${m.sorteos.length} sorteos registrados</small>
-                        </div>
-                        <button class="btn-fin btn-carga" onclick="verDetalleMes(${m.id})">👁️ Ver</button>
-                    </div>`;
-            });
+            alert("¡Mes archivado con estadísticas completas!");
         }
 
         function verDetalleMes(id) {
             let mes = historialMensual.find(m => m.id === id);
             if (!mes) return;
 
-            let totalCargas = mes.finanzas.filter(f => f.tipo === 'carga').reduce((acc, f) => acc + f.monto, 0);
-            let totalRetiros = mes.finanzas.filter(f => f.tipo === 'retiro').reduce((acc, f) => acc + f.monto, 0);
-            let saldo = totalRetiros - totalCargas;
+            // Soporte retroactivo por si hay meses guardados con el formato viejo
+            let totalSorteos = mes.totalSorteos !== undefined ? mes.totalSorteos : mes.sorteos.length;
+            let cargas = mes.finanzas && typeof mes.finanzas === 'object' && !Array.isArray(mes.finanzas) ? 
+                mes.finanzas.cargas : mes.finanzas.filter(f => f.tipo === 'carga').reduce((acc, f) => acc + f.monto, 0);
+            let retiros = mes.finanzas && typeof mes.finanzas === 'object' && !Array.isArray(mes.finanzas) ? 
+                mes.finanzas.retiros : mes.finanzas.filter(f => f.tipo === 'retiro').reduce((acc, f) => acc + f.monto, 0);
+            let saldo = retiros - cargas;
 
-            document.getElementById('modalTitulo').innerText = mes.nombre;
-            document.getElementById('modalCuerpo').innerHTML = `
-                <b>Total Sorteos:</b> ${mes.sorteos.length}<br>
-                <b>Apuestas (Cargas):</b> $${totalCargas.toLocaleString()}<br>
-                <b>Premios (Retiros):</b> $${totalRetiros.toLocaleString()}<br>
-                <b>Saldo Final:</b> <span style="color:${saldo >= 0 ? 'var(--success-color)' : 'var(--hot-color)'}">$${saldo.toLocaleString()}</span>
+            document.getElementById('modalTitulo').innerText = `📊 ${mes.nombre}`;
+            
+            let htmlContenido = `
+                <div style="background: #f8fafc; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
+                    <b>📅 Cantidad de Sorteos:</b> ${totalSorteos}<br>
+                    <b>📥 Total Cargas:</b> $${cargas.toLocaleString()}<br>
+                    <b>📤 Total Retiros:</b> $${retiros.toLocaleString()}<br>
+                    <b>💰 Saldo Final:</b> <span style="color:${saldo >= 0 ? 'var(--success-color)' : 'var(--hot-color)'}; font-weight:bold;">$${saldo.toLocaleString()}</span>
+                </div>
             `;
+
+            if (mes.estadisticas && mes.estadisticas.calientes) {
+                htmlContenido += `
+                    <div style="margin-bottom: 10px;">
+                        <strong style="color: var(--hot-color);">🔥 Números Calientes:</strong>
+                        <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
+                            ${mes.estadisticas.calientes.map(i => `<span class="badge hot">${i.numero} (${i.apariciones})</span>`).join('')}
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <strong style="color: var(--cold-color);">❄️ Números Fríos:</strong>
+                        <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
+                            ${mes.estadisticas.frios.map(i => `<span class="badge cold">${i.numero} (${i.apariciones})</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            document.getElementById('modalCuerpo').innerHTML = htmlContenido;
 
             const btnDescargar = document.getElementById('btnDescargarJSON');
             btnDescargar.onclick = function() {
@@ -640,7 +677,7 @@
                 let url = URL.createObjectURL(blob);
                 let a = document.createElement('a');
                 a.href = url;
-                a.download = `quiniela_${mes.nombre.replace(/\s+/g, '_')}.json`;
+                a.download = `quiniela_reporte_${mes.nombre.replace(/\s+/g, '_')}.json`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
@@ -648,6 +685,7 @@
             };
 
             document.getElementById('modalDetalle').style.display = 'flex';
+        }
         }
 
         function cerrarModal() {
