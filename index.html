@@ -572,7 +572,6 @@
             let nombreMes = prompt("Ingresá un nombre para identificar este mes (Ej: Agosto 2026):", new Date().toLocaleString('es-ES', { month: 'long', year: 'numeric' }));
             if (!nombreMes) return;
 
-            // Calcular estadísticas completas al momento de cerrar el mes
             let conteoGeneral = {};
             for (let i = 0; i <= 99; i++) conteoGeneral[i.toString().padStart(2, '0')] = 0;
             
@@ -590,7 +589,6 @@
             let totalCargas = movimientosFinancieros.filter(f => f.tipo === 'carga').reduce((acc, f) => acc + f.monto, 0);
             let totalRetiros = movimientosFinancieros.filter(f => f.tipo === 'retiro').reduce((acc, f) => acc + f.monto, 0);
 
-            // Objeto completo y detallado para comparación y exportación
             let datosMes = {
                 id: Date.now(),
                 nombre: nombreMes,
@@ -613,7 +611,6 @@
             historialMensual.unshift(datosMes);
             localStorage.setItem('historialMensual', JSON.stringify(historialMensual));
 
-            // Limpiar datos actuales
             historialSorteos = [];
             borratinaEstado = {};
             movimientosFinancieros = [];
@@ -629,23 +626,51 @@
             alert("¡Mes archivado con estadísticas completas!");
         }
 
+        function actualizarHistorialMensual() {
+            const container = document.getElementById('historialMensualContainer');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (!historialMensual || historialMensual.length === 0) {
+                container.innerHTML = '<span style="color: #94a3b8; font-size: 0.85rem;">No hay meses archivados todavía.</span>';
+                return;
+            }
+
+            historialMensual.forEach(m => {
+                let totalS = m.totalSorteos !== undefined ? m.totalSorteos : (m.sorteos ? m.sorteos.length : (m.historialSorteos ? m.historialSorteos.length : 0));
+                container.innerHTML += `
+                    <div class="mes-item">
+                        <div>
+                            <strong>${m.nombre}</strong><br>
+                            <small style="color: #64748b;">${totalS} sorteos registrados</small>
+                        </div>
+                        <button class="btn-fin btn-carga" onclick="verDetalleMes(${m.id})">👁️ Ver</button>
+                    </div>`;
+            });
+        }
+
         function verDetalleMes(id) {
             let mes = historialMensual.find(m => m.id === id);
             if (!mes) return;
 
-            // Soporte retroactivo por si hay meses guardados con el formato viejo
-            let totalSorteos = mes.totalSorteos !== undefined ? mes.totalSorteos : mes.sorteos.length;
-            let cargas = mes.finanzas && typeof mes.finanzas === 'object' && !Array.isArray(mes.finanzas) ? 
-                mes.finanzas.cargas : mes.finanzas.filter(f => f.tipo === 'carga').reduce((acc, f) => acc + f.monto, 0);
-            let retiros = mes.finanzas && typeof mes.finanzas === 'object' && !Array.isArray(mes.finanzas) ? 
-                mes.finanzas.retiros : mes.finanzas.filter(f => f.tipo === 'retiro').reduce((acc, f) => acc + f.monto, 0);
+            let totalSorteos = mes.totalSorteos !== undefined ? mes.totalSorteos : (mes.sorteos ? mes.sorteos.length : (mes.historialSorteos ? mes.historialSorteos.length : 0));
+            let cargas = 0;
+            let retiros = 0;
+
+            if (mes.finanzas && typeof mes.finanzas === 'object' && !Array.isArray(mes.finanzas)) {
+                cargas = mes.finanzas.cargas;
+                retiros = mes.finanzas.retiros;
+            } else if (Array.isArray(mes.finanzas)) {
+                cargas = mes.finanzas.filter(f => f.tipo === 'carga').reduce((acc, f) => acc + f.monto, 0);
+                retiros = mes.finanzas.filter(f => f.tipo === 'retiro').reduce((acc, f) => acc + f.monto, 0);
+            }
             let saldo = retiros - cargas;
 
             document.getElementById('modalTitulo').innerText = `📊 ${mes.nombre}`;
             
             let htmlContenido = `
-                <div style="background: #f8fafc; padding: 10px; border-radius: 8px; margin-bottom: 10px;">
-                    <b>📅 Cantidad de Sorteos:</b> ${totalSorteos}<br>
+                <div style="background: #f8fafc; padding: 10px; border-radius: 8px; margin-bottom: 10px; border: 1px solid var(--border-color);">
+                    <b>📅 Sorteos Registrados:</b> ${totalSorteos}<br>
                     <b>📥 Total Cargas:</b> $${cargas.toLocaleString()}<br>
                     <b>📤 Total Retiros:</b> $${retiros.toLocaleString()}<br>
                     <b>💰 Saldo Final:</b> <span style="color:${saldo >= 0 ? 'var(--success-color)' : 'var(--hot-color)'}; font-weight:bold;">$${saldo.toLocaleString()}</span>
@@ -655,13 +680,13 @@
             if (mes.estadisticas && mes.estadisticas.calientes) {
                 htmlContenido += `
                     <div style="margin-bottom: 10px;">
-                        <strong style="color: var(--hot-color);">🔥 Números Calientes:</strong>
+                        <strong style="color: var(--hot-color);">🔥 Números Calientes (Apariciones):</strong>
                         <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
                             ${mes.estadisticas.calientes.map(i => `<span class="badge hot">${i.numero} (${i.apariciones})</span>`).join('')}
                         </div>
                     </div>
                     <div style="margin-bottom: 10px;">
-                        <strong style="color: var(--cold-color);">❄️ Números Fríos:</strong>
+                        <strong style="color: var(--cold-color);">❄️ Números Fríos (Apariciones):</strong>
                         <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">
                             ${mes.estadisticas.frios.map(i => `<span class="badge cold">${i.numero} (${i.apariciones})</span>`).join('')}
                         </div>
@@ -686,7 +711,6 @@
 
             document.getElementById('modalDetalle').style.display = 'flex';
         }
-        
 
         function cerrarModal() {
             document.getElementById('modalDetalle').style.display = 'none';
